@@ -8,7 +8,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-extension-samples"
+		"url": "https://github.com/gangan1996/memory-leak-file-check.git"
 	},
 	"engines": {
 		"vscode": "^1.74.0"
@@ -95,6 +95,7 @@
 		"@types/vscode": "^1.73.0",
 		"@typescript-eslint/eslint-plugin": "^5.42.0",
 		"@typescript-eslint/parser": "^5.42.0",
+		"esbuild": "^0.17.12",
 		"eslint": "^8.26.0",
 		"typescript": "^4.9.4"
 	},
