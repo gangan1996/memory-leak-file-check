@@ -1,0 +1,113 @@
+{
+	"name": "memory-leak-file-check",
+	"displayName": "memory leak file check",
+	"description": "memory leak file check for code",
+	"version": "0.0.1",
+	"publisher": "gangan1996",
+	"private": true,
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Microsoft/vscode-extension-samples"
+	},
+	"engines": {
+		"vscode": "^1.74.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onLanguage:json",
+		"onLanguage:jsonc"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "package-explorer",
+					"title": "Package Explorer",
+					"icon": "media/dep.svg"
+				}
+			]
+		},
+		"views": {
+			"package-explorer": [
+				{
+					"id": "memoryLeakFileCheck",
+					"name": "MemoryLeakFile Check",
+					"icon": "media/dep.svg",
+					"contextualTitle": "Package Explorer"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "memoryLeakFileCheck.refreshEntry",
+				"title": "Refresh",
+				"icon": {
+					"light": "resources/light/refresh.svg",
+					"dark": "resources/dark/refresh.svg"
+				}
+			}
+		],
+		"menus": {
+			"view/title": [
+				{
+					"command": "memoryLeakFileCheck.refreshEntry",
+					"when": "view == memoryLeakFileCheck",
+					"group": "navigation"
+				}
+			]
+		},
+		"colors": [
+			{
+				"id": "errorCode",
+				"description": "Background decoration color for large numbers",
+				"defaults": {
+					"dark": "#FF000055",
+					"light": "#FF000055",
+					"highContrast": "#FF000055"
+				}
+			},
+			{
+				"id": "warningCode",
+				"description": "Background decoration color for large numbers",
+				"defaults": {
+					"dark": "#cfa01555",
+					"light": "#cfa01555",
+					"highContrast": "#cfa01555"
+				}
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"lint": "eslint \"src/**/*.ts\""
+	},
+	"devDependencies": {
+		"@types/ftp": "^0.3.33",
+		"@types/mkdirp": "^0.5.2",
+		"@types/node": "^16.11.7",
+		"@types/rimraf": "^2.0.2",
+		"@types/vscode": "^1.73.0",
+		"@typescript-eslint/eslint-plugin": "^5.42.0",
+		"@typescript-eslint/parser": "^5.42.0",
+		"eslint": "^8.26.0",
+		"typescript": "^4.9.4"
+	},
+	"dependencies": {
+		"@babel/parser": "^7.21.3",
+		"@babel/traverse": "^7.21.3",
+		"@vue/compiler-dom": "^3.2.47",
+		"@vue/compiler-sfc": "^3.2.47",
+		"ftp": "^0.3.10",
+		"jsonc-parser": "^0.4.2",
+		"minimist": "^1.2.6",
+		"mkdirp": "^0.5.1",
+		"rimraf": "^2.6.2",
+		"vue-template-compiler": "^2.7.14"
+	}
+}
