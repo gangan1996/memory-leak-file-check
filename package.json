@@ -2,7 +2,7 @@
 	"name": "memory-leak-file-check",
 	"displayName": "memory leak file check",
 	"description": "memory leak file check for code",
-	"version": "0.0.1",
+	"version": "0.0.3",
 	"publisher": "gangan1996",
 	"private": true,
 	"license": "MIT",
@@ -25,14 +25,14 @@
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "package-explorer",
-					"title": "Package Explorer",
+					"id": "memory-leak-file-checker",
+					"title": "Memoryleak File Checker",
 					"icon": "media/dep.svg"
 				}
 			]
 		},
 		"views": {
-			"package-explorer": [
+			"memory-leak-file-checker": [
 				{
 					"id": "memoryLeakFileCheck",
 					"name": "MemoryLeakFile Check",

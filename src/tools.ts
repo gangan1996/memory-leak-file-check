@@ -5,8 +5,14 @@ const compilerSFC = require("@vue/compiler-sfc")
 const fs = require('fs');
 const path = require('path');
 const _isDir = (path: string) => {
-	const state = fs.statSync(path);
-	return !state.isFile();
+	try {
+		const state = fs.statSync(path);
+		return !state.isFile();
+	} catch(err) {
+		console.log(err)
+		return false
+	}
+
 }
 
 interface CheckerConfig {
@@ -29,10 +35,10 @@ interface leakFile {
 	leakList: LeakObj[]
 }
 export function getCheckerConfig(rootPath: string | undefined) {
-	const vscodeConfigPath = path.join(rootPath, '.vscode/spell-checker-config.json');
-	const projectConfigPath = path.join(rootPath, '.project/spell-checker-config.json');
+	const vscodeConfigPath = path.join(rootPath, '/.vscode/memory_leak_checker_config.json');
+	const projectConfigPath = path.join(rootPath, '/.project/memory_leak_checker_config.json');
 	const basicConfig = {
-		codeDir: '',// '/src/renderer',
+		codeDir: '', // '/src/renderer',
 		excludedDirNameSet: new Set(["node_modules", ".git"]),
 		includedFileSuffixSet: new Set([".vue"]),
 		excludedFileNameSet: new Set([".DS_Store"])
@@ -56,6 +62,7 @@ export function getCheckerConfig(rootPath: string | undefined) {
 		basicConfig.excludedDirNameSet = config.excludedFloders ? new Set(config.excludedFloders) : basicConfig.excludedDirNameSet;
 		basicConfig.includedFileSuffixSet = config.includedFileSubfixes ? new Set(config.includedFileSubfixes) : basicConfig.includedFileSuffixSet;
 		basicConfig.excludedFileNameSet = config.excludedFileNames ? new Set(config.excludedFileNames) : basicConfig.excludedFileNameSet;
+		basicConfig.codeDir = config.codeDir ? config.codeDir : basicConfig.codeDir;
 		return basicConfig;
 	} catch (err) {
 		return basicConfig;
@@ -63,7 +70,12 @@ export function getCheckerConfig(rootPath: string | undefined) {
 }
 export function getFileList(rootPath: string | undefined, checkerConfig: CheckerConfig): string[] {
 	const fileList: string[] = [];
-	const dirSubItems = fs.readdirSync(rootPath);
+	let dirSubItems = []
+	try {
+		dirSubItems = fs.readdirSync(rootPath);
+	} catch (err) {
+		console.log('err', err)
+	}
 	for (const item of dirSubItems) {
 		const childPath = path.join(rootPath, item);
 		if (_isDir(childPath) && !checkerConfig.excludedDirNameSet.has(item)) {
@@ -73,6 +85,7 @@ export function getFileList(rootPath: string | undefined, checkerConfig: Checker
 		}
 	}
 	return fileList;
+
 }
 
 const eventRegisterKeyMap: any = {
@@ -117,8 +130,8 @@ const eventRegisterKeyMap: any = {
 		noKey: true
 	},
 };
-const globalObjList: string[] = ['window', 'document']
-const thisValueList: any[] = []
+let globalObjList: string[] = []
+let thisValueList: any[] = []
 
 function isSameObj(obj1: any, obj2: any): Boolean {
 	if (obj1 && obj2 && obj1.type === obj2.type) {
@@ -172,6 +185,8 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 	const jsSource = sourceAst.script && sourceAst.script.content
 	const scriptLine = sourceAst.script ? sourceAst.script.loc.start.line : 0
 	const scriptStart = sourceAst.script ? sourceAst.script.loc.start.offset : 0
+	globalObjList = ['window', 'document']
+	thisValueList = []
 	if (jsSource) {
 		const ast = parser.parse(jsSource, {
 			allowImportExportEverywhere: true,
@@ -237,22 +252,22 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 			AssignmentExpression(path: any) {
 				const operator = path.node.operator
 				if (operator === '=') {
-				  const left = path.node.left
-				  const right = path.node.right
-				  const obj = getRealObj(left)
-				  if (globalObjList.indexOf(obj) > -1) {
-					const globalValueObj = {
-					  target: left,
-					  start: path.node.start,
-					  end: path.node.end,
-					  loc: path.node.loc
+					const left = path.node.left
+					const right = path.node.right
+					const obj = getRealObj(left)
+					if (globalObjList.indexOf(obj) > -1) {
+						const globalValueObj = {
+							target: left,
+							start: path.node.start,
+							end: path.node.end,
+							loc: path.node.loc
+						}
+						if (right.type === 'NullLiteral' || (right.type === 'Identifier' && right.name === 'undefined')) {
+							deleteGlobalValueList.push(globalValueObj)
+						} else {
+							onGlobalValueList.push(globalValueObj)
+						}
 					}
-					if (right.type === 'NullLiteral' || (right.type === 'Identifier' && right.name === 'undefined')) {
-					  deleteGlobalValueList.push(globalValueObj)
-					} else {
-					  onGlobalValueList.push(globalValueObj)
-					}
-				  }
 				}
 			},
 			UnaryExpression(path: any) {
@@ -333,16 +348,20 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 export function getMemoryLeakInfo(fileList: any[]): leakFile[] {
 	const leakFileList = []
 	for (const file of fileList) {
-		const content = fs.readFileSync(file, {
-			encoding: 'utf-8'
-		});
-		const leakPosList = getCodeLeakPos(content)
-		if (leakPosList.length > 0) {
-			leakFileList.push({
-				isFile: true,
-				file: file,
-				leakList: leakPosList
-			})
+		try {
+			const content = fs.readFileSync(file, {
+				encoding: 'utf-8'
+			});
+			const leakPosList = getCodeLeakPos(content)
+			if (leakPosList.length > 0) {
+				leakFileList.push({
+					isFile: true,
+					file: file,
+					leakList: leakPosList
+				})
+			}
+		} catch (err) {
+
 		}
 	}
 	return leakFileList
