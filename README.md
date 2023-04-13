@@ -1,51 +1,107 @@
 # Views & View Containers
 
-This sample demonstrates how to implement and contribute a tree view in VS Code. This includes:
+Detect code with memory leak risk in the project. This includes:
 
-- Contributing views and view containers.
-- Contributing actions in various location of the view.
-- Implementing the tree data provider for the view.
-- Creating and working with the view.
+- Provide a tree view to display the file information and code information of the project memory leak
+- Identify leaked code in documentation
 
-This sample provides following views
 
-- Node dependencies view
-- Ftp file explorer view
+## Config File
+Provide config file at '/.vscode/memory_leak_checker_config.json' to accelerated code scanning.
+The default configuration is
+```
+{
+	codeDir: "",  // The code directory that needs to be scanned, used to narrow the scope of the scan
+	excludedDirNameSet: ["node_modules", ".git"], // Excluded directories
+	includedFileSuffixSet: [".vue", ".js"], // The extension of the file to be scanned
+	excludedFileNameSet: [".DS_Store"], // Excluded filenames
+	hideWarning: false, // Whether to hide warning alarms
+	eventRegisterKeyMap: {}, // Configuration to detect event mounts and unmounts
+	notUseDefaultEventRegisterKeyMap: false, // Do not use the default configuration provided by eventRegisterKeyMap
+}
+```
+The leak error on the next line can be ignored by commenting
+```
+// memory-leak-check-ignore-next-line
+```
+eventRegisterKeyMap default configuration
+```
+	{
+        "$on": {
+            "isOn": true,
+            "cp": [
+                "$off"
+            ]
+        },
+        "$off": {
+            "isOn": false,
+            "cp": [
+                "$on"
+            ]
+        },
+        "on": {
+            "isOn": true,
+            "cp": [
+                "off",
+                "removeListener"
+            ]
+        },
+        "removeListener": {
+            "isOn": false,
+            "cp": [
+                "on"
+            ]
+        },
+        "off": {
+            "isOn": false,
+            "cp": [
+                "on"
+            ]
+        },
+        "addEventListener": {
+            "isOn": true,
+            "cp": [
+                "removeEventListener"
+            ]
+        },
+        "removeEventListener": {
+            "isOn": false,
+            "cp": [
+                "addEventListener"
+            ]
+        },
+        "onPush": {
+            "isOn": true,
+            "cp": [
+                "removePushListener"
+            ],
+            "reverse": true,
+            "noKey": true,
+            "targetList": ["this.ipc"
+            ]
+        },
+        "removePushListener": {
+            "isOn": false,
+            "cp": [
+                "onPush"
+            ],
+            "reverse": true,
+            "noKey": true,
+            "targetList": ["this.ipc"
+            ]
+        },
+        "ipcRendererOn": {
+            "isOn": true,
+            "cp": [
+                "ipcRendererRemoveListener"
+            ]
+        },
+        "ipcRendererRemoveListener": {
+            "isOn": false,
+            "cp": [
+                "ipcRendererOn"
+            ]
+        }
+    }
+```
 
-Following example shows Node dependencies view in Package Explorer View container.
-
-![Package Explorer](./resources/package-explorer.png)
-
-## VS Code API
-
-This sample uses following contribution points, activation events and APIs
-
-### Contribution Points
-
-- `views`
-- `viewsContainers`
-- `menu`
-  - `view/title`
-  - `view/item/context`
-
-### Activation Events
-
-- `onView:${viewId}`
-
-### APIs
-
-- `window.createTreeView`
-- `window.registerTreeDataProvider`
-- `TreeView`
-- `TreeDataProvider`
-
-Refer to [Usage](./USAGE.md) document for more details.
-
-## Running the Sample
-
-- Open this example in VS Code Insiders
-- `npm install`
-- `npm run watch`
-- `F5` to start debugging
-- Node dependencies view is shown in Package explorer view container in Activity bar.
-- FTP file explorer view should be shown in Explorer

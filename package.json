@@ -2,7 +2,7 @@
 	"name": "memory-leak-file-check",
 	"displayName": "memory leak file check",
 	"description": "memory leak file check for code",
-	"version": "0.0.3",
+	"version": "0.0.14",
 	"publisher": "gangan1996",
 	"private": true,
 	"license": "MIT",

@@ -8,7 +8,7 @@ const _isDir = (path: string) => {
 	try {
 		const state = fs.statSync(path);
 		return !state.isFile();
-	} catch(err) {
+	} catch (err) {
 		console.log(err)
 		return false
 	}
@@ -16,10 +16,13 @@ const _isDir = (path: string) => {
 }
 
 interface CheckerConfig {
+	hideWarning: boolean,
 	codeDir: string
 	excludedDirNameSet: Set<string>,
 	includedFileSuffixSet: Set<string>,
-	excludedFileNameSet: Set<string>
+	excludedFileNameSet: Set<string>,
+	eventRegisterKeyMap: object,
+	notUseDefaultEventRegisterKeyMap: boolean
 }
 interface LeakObj {
 	errorType: string,
@@ -34,14 +37,18 @@ interface leakFile {
 	file: string,
 	leakList: LeakObj[]
 }
+
 export function getCheckerConfig(rootPath: string | undefined) {
 	const vscodeConfigPath = path.join(rootPath, '/.vscode/memory_leak_checker_config.json');
 	const projectConfigPath = path.join(rootPath, '/.project/memory_leak_checker_config.json');
 	const basicConfig = {
+		hideWarning: false,
 		codeDir: '', // '/src/renderer',
 		excludedDirNameSet: new Set(["node_modules", ".git"]),
-		includedFileSuffixSet: new Set([".vue"]),
-		excludedFileNameSet: new Set([".DS_Store"])
+		includedFileSuffixSet: new Set([".vue", ".js"]),
+		excludedFileNameSet: new Set([".DS_Store"]),
+		eventRegisterKeyMap: {},
+		notUseDefaultEventRegisterKeyMap: false
 	}
 	let configPath;
 	// support config file in .vscode or .project
@@ -59,10 +66,13 @@ export function getCheckerConfig(rootPath: string | undefined) {
 		}));
 		// because of word cannot include spec chars
 		// so whiteList support word connected by ‘,’ or word array
-		basicConfig.excludedDirNameSet = config.excludedFloders ? new Set(config.excludedFloders) : basicConfig.excludedDirNameSet;
-		basicConfig.includedFileSuffixSet = config.includedFileSubfixes ? new Set(config.includedFileSubfixes) : basicConfig.includedFileSuffixSet;
-		basicConfig.excludedFileNameSet = config.excludedFileNames ? new Set(config.excludedFileNames) : basicConfig.excludedFileNameSet;
+		basicConfig.excludedDirNameSet = config.excludedDirNameSet ? new Set(config.excludedDirNameSet) : basicConfig.excludedDirNameSet;
+		basicConfig.includedFileSuffixSet = config.includedFileSuffixSet ? new Set(config.includedFileSuffixSet) : basicConfig.includedFileSuffixSet;
+		basicConfig.excludedFileNameSet = config.excludedFileNameSet ? new Set(config.excludedFileNameSet) : basicConfig.excludedFileNameSet;
 		basicConfig.codeDir = config.codeDir ? config.codeDir : basicConfig.codeDir;
+		basicConfig.hideWarning = config.hideWarning ? config.hideWarning : basicConfig.hideWarning;
+		basicConfig.eventRegisterKeyMap = config.eventRegisterKeyMap ? config.eventRegisterKeyMap : basicConfig.eventRegisterKeyMap;
+		basicConfig.notUseDefaultEventRegisterKeyMap = config.notUseDefaultEventRegisterKeyMap ? config.notUseDefaultEventRegisterKeyMap : basicConfig.notUseDefaultEventRegisterKeyMap;
 		return basicConfig;
 	} catch (err) {
 		return basicConfig;
@@ -89,46 +99,81 @@ export function getFileList(rootPath: string | undefined, checkerConfig: Checker
 }
 
 const eventRegisterKeyMap: any = {
-	$on: {
-		isOn: true,
-		cp: ["$off"],
+	"$on": {
+		"isOn": true,
+		"cp": [
+			"$off"
+		]
 	},
-	$off: {
-		isOn: false,
-		cp: ["$on"],
+	"$off": {
+		"isOn": false,
+		"cp": [
+			"$on"
+		]
 	},
-	on: {
-		isOn: true,
-		cp: ["off", "removeListener"],
+	"on": {
+		"isOn": true,
+		"cp": [
+			"off",
+			"removeListener"
+		]
 	},
-	removeListener: {
-		isOn: false,
-		cp: ["on"]
+	"removeListener": {
+		"isOn": false,
+		"cp": [
+			"on"
+		]
 	},
-	off: {
-		isOn: false,
-		cp: ["on"],
+	"off": {
+		"isOn": false,
+		"cp": [
+			"on"
+		]
 	},
-	addEventListener: {
-		isOn: true,
-		cp: ["removeEventListener"],
+	"addEventListener": {
+		"isOn": true,
+		"cp": [
+			"removeEventListener"
+		]
 	},
-	removeEventListener: {
-		isOn: false,
-		cp: ["addEventListener"],
+	"removeEventListener": {
+		"isOn": false,
+		"cp": [
+			"addEventListener"
+		]
 	},
-	onPush: {
-		isOn: true,
-		cp: ["removePushListener"],
-		reverse: true,
-		noKey: true
+	"onPush": {
+		"isOn": true,
+		"cp": [
+			"removePushListener"
+		],
+		"reverse": true,
+		"noKey": true,
+		"targetList": ["this.ipc"
+		]
 	},
-	removePushListener: {
-		isOn: false,
-		cp: ["onPush"],
-		reverse: true,
-		noKey: true
+	"removePushListener": {
+		"isOn": false,
+		"cp": [
+			"onPush"
+		],
+		"reverse": true,
+		"noKey": true,
+		"targetList": ["this.ipc"
+		]
 	},
+	"ipcRendererOn": {
+		"isOn": true,
+		"cp": [
+			"ipcRendererRemoveListener"
+		]
+	},
+	"ipcRendererRemoveListener": {
+		"isOn": false,
+		"cp": [
+			"ipcRendererOn"
+		]
+	}
 };
 let globalObjList: string[] = []
 let thisValueList: any[] = []
@@ -149,15 +194,16 @@ function isSameObj(obj1: any, obj2: any): Boolean {
 	return false;
 }
 
-function getRealObj(obj: any): string {
+function getRealObj(obj: any): string | any {
 	if (obj.type === 'Identifier') {
 		return obj.name
 	} else if (obj.type === 'MemberExpression') {
 		return getRealObj(obj.object)
 	} else {
-		return obj.type
+		return obj
 	}
 }
+
 
 function hasThis(args: any[]): boolean {
 	if (args.length) {
@@ -174,18 +220,33 @@ function hasThis(args: any[]): boolean {
 }
 
 
-export function getCodeLeakPos(code: string): LeakObj[] {
+export function getCodeLeakPos(code: string, checkerConfig: CheckerConfig, fileType: string): LeakObj[] {
 	const posList: any[] = []
 	const onEventList: any[] = [];
 	const offEventList: any[] = [];
 	const onGlobalValueList: any[] = [];
 	const deleteGlobalValueList: any[] = [];
 	const warningLeakList: any[] = []
-	const sourceAst = compilerSFC.parse(code).descriptor // vueCompiler.parseComponent(code)
-	const jsSource = sourceAst.script && sourceAst.script.content
-	const scriptLine = sourceAst.script ? sourceAst.script.loc.start.line : 0
-	const scriptStart = sourceAst.script ? sourceAst.script.loc.start.offset : 0
-	globalObjList = ['window', 'document']
+	const ignoreLineList: number[] = []
+	let myEventRegisterKeyMap: any = {}
+	if (checkerConfig.notUseDefaultEventRegisterKeyMap) {
+		myEventRegisterKeyMap = checkerConfig.eventRegisterKeyMap || {}
+	} else {
+		myEventRegisterKeyMap = Object.assign(eventRegisterKeyMap, checkerConfig.eventRegisterKeyMap)
+	}
+	let jsSource = ''
+	let scriptLine = 0
+	let scriptStart = 0
+	if (fileType === 'vue') {
+		const sourceAst = compilerSFC.parse(code).descriptor // vueCompiler.parseComponent(code)
+		jsSource = sourceAst.script && sourceAst.script.content
+		scriptLine = sourceAst.script ? sourceAst.script.loc.start.line : 0
+		scriptStart = sourceAst.script ? sourceAst.script.loc.start.offset : 0
+	} else if (fileType === 'js') {
+		jsSource = code
+	}
+	globalObjList = ['window', 'document', 'process']
+	const warningCalleePropertyList = ['querySelectorAll', 'querySelector']
 	thisValueList = []
 	if (jsSource) {
 		const ast = parser.parse(jsSource, {
@@ -193,6 +254,11 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 			attachComment: true,
 			plugins: ["typescript", "decorators-legacy"],
 		});
+		ast.comments && ast.comments.forEach((c) => {
+			if (c.type === 'CommentLine' && c.value.indexOf('memory-leak-check-ignore-next-line') > -1) {
+				c.loc && ignoreLineList.push(c.loc.start.line + 1)
+			}
+		})
 		traverse(ast, {
 			ImportDeclaration(path: any) {
 				const specifiers = path.node.specifiers
@@ -201,6 +267,35 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 						globalObjList.push(specifier.local.name)
 					})
 				}
+			}
+		})
+		traverse(ast, {
+			VariableDeclaration(path: any) {
+				const declarations = path.node.declarations
+				declarations && declarations.forEach((item: any) => {
+					if (item.type === 'VariableDeclarator' && item.init && item.id && (item.init.type === 'MemberExpression' || item.init.type === 'CallExpression')) {
+						function addGlobalObj(id: any) {
+							if (id.type === 'Identifier' && id.name) {
+								globalObjList.push(id.name)
+							} else if (id.type === 'ObjectPattern' && id.properties) {
+								id.properties.forEach((p: any) => {
+									if (p.value && p.value.name) {
+										globalObjList.push(p.value.name)
+									}
+								})
+
+							}
+						}
+						if (item.init.type === 'MemberExpression') {
+							const obj = getRealObj(item.init.object)
+							if (obj.type === 'CallExpression' && obj.callee && obj.callee.name === 'require') {
+								addGlobalObj(item.id)
+							}
+						} else if (item.init.type === 'CallExpression' && item.init.callee && item.init.callee.name === 'require') {
+							addGlobalObj(item.id)
+						}
+					}
+				})
 			}
 		})
 		traverse(ast, {
@@ -215,7 +310,7 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 			CallExpression(path: any) {
 				const callee = path.node.callee;
 				const args = path.node.arguments;
-				if (callee.property && eventRegisterKeyMap[callee.property.name] && args.length) {
+				if (callee.property && myEventRegisterKeyMap[callee.property.name] && args.length) {
 					const eventObj: any = {
 						target: callee.object,
 						register: callee.property.name,
@@ -223,29 +318,39 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 						end: path.node.end,
 						loc: path.node.loc
 					};
-					if (eventRegisterKeyMap[callee.property.name].reverse) {
+					if (myEventRegisterKeyMap[callee.property.name].reverse) {
 						eventObj.cb = args[0];
 						args.length > 1 && (eventObj.event = args[1].value);
 					} else {
 						eventObj.event = args[0].value;
 						args.length > 1 && (eventObj.cb = args[1]);
 					}
-					if (eventRegisterKeyMap[callee.property.name].isOn) {
-						onEventList.push(eventObj);
-					} else {
-						offEventList.push(eventObj);
-					}
-				}
-				const obj = getRealObj(path.node.callee)
-				const property = path.node.callee.property && path.node.callee.property.name
-				if (globalObjList.indexOf(obj) > -1 && (!property || Object.keys(eventRegisterKeyMap).indexOf(property) === -1)) {
-					const args = path.node.arguments
-					if (hasThis(args)) {
-						warningLeakList.push({
-							start: path.node.start,
-							end: path.node.end,
-							loc: path.node.loc
-						})
+					const obj = getRealObj(eventObj.target)
+					const targetStr = jsSource.substring(eventObj.target.start, eventObj.target.end)
+					if (globalObjList.indexOf(targetStr) > -1 || (myEventRegisterKeyMap[callee.property.name].targetList && eventRegisterKeyMap[callee.property.name].targetList.indexOf(targetStr) > -1))
+						if (myEventRegisterKeyMap[callee.property.name].isOn) {
+							onEventList.push(eventObj);
+						} else {
+							offEventList.push(eventObj);
+						}
+				} else if (callee.property && warningCalleePropertyList.indexOf(callee.property.name) > 0) {
+					warningLeakList.push({
+						start: path.node.start,
+						end: path.node.end,
+						loc: path.node.loc
+					})
+				} else {
+					const obj = getRealObj(path.node.callee)
+					const property = path.node.callee.property && path.node.callee.property.name
+					if (globalObjList.indexOf(obj) > -1 && (!property || Object.keys(myEventRegisterKeyMap).indexOf(property) === -1)) {
+						const args = path.node.arguments
+						if (hasThis(args)) {
+							warningLeakList.push({
+								start: path.node.start,
+								end: path.node.end,
+								loc: path.node.loc
+							})
+						}
 					}
 				}
 			},
@@ -254,18 +359,20 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 				if (operator === '=') {
 					const left = path.node.left
 					const right = path.node.right
-					const obj = getRealObj(left)
-					if (globalObjList.indexOf(obj) > -1) {
-						const globalValueObj = {
-							target: left,
-							start: path.node.start,
-							end: path.node.end,
-							loc: path.node.loc
-						}
-						if (right.type === 'NullLiteral' || (right.type === 'Identifier' && right.name === 'undefined')) {
-							deleteGlobalValueList.push(globalValueObj)
-						} else {
-							onGlobalValueList.push(globalValueObj)
+					if(left.type === 'MemberExpression') {
+						const obj = getRealObj(left)
+						if (globalObjList.indexOf(obj) > -1) {
+							const globalValueObj = {
+								target: left,
+								start: path.node.start,
+								end: path.node.end,
+								loc: path.node.loc
+							}
+							if (right.type === 'NullLiteral' || (right.type === 'Identifier' && right.name === 'undefined')) {
+								deleteGlobalValueList.push(globalValueObj)
+							} else {
+								onGlobalValueList.push(globalValueObj)
+							}
 						}
 					}
 				}
@@ -288,8 +395,8 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 			offEventList.forEach((offEventObj) => {
 				if (
 					isSameObj(onEventObj.target, offEventObj.target) &&
-					(eventRegisterKeyMap[onEventObj.register].noKey || onEventObj.event === offEventObj.event) &&
-					eventRegisterKeyMap[onEventObj.register].cp.indexOf(offEventObj.register) > -1 &&
+					(myEventRegisterKeyMap[onEventObj.register].noKey || onEventObj.event === offEventObj.event) &&
+					myEventRegisterKeyMap[onEventObj.register].cp.indexOf(offEventObj.register) > -1 &&
 					isSameObj(onEventObj.cb, offEventObj.cb)
 				) {
 					hasOff = true;
@@ -312,47 +419,63 @@ export function getCodeLeakPos(code: string): LeakObj[] {
 			}
 		})
 		leakEventList.forEach((event) => {
-			posList.push({
-				errorType: 'error',
-				start: event.start + scriptStart,
-				end: event.end + scriptStart,
-				content: jsSource.substr(event.start, event.end - event.start),
-				loc: event.loc,
-				scriptLine: scriptLine
-			})
+			if (ignoreLineList.indexOf(event.loc.start.line) === -1) {
+				posList.push({
+					errorType: 'error',
+					start: event.start + scriptStart,
+					end: event.end + scriptStart,
+					content: jsSource.substr(event.start, event.end - event.start),
+					loc: event.loc,
+					scriptLine: scriptLine
+				})
+			}
 		});
 		leakGlobalValueList.forEach((event) => {
-			posList.push({
-				errorType: 'error',
-				start: event.start + scriptStart,
-				end: event.end + scriptStart,
-				content: jsSource.substr(event.start, event.end - event.start),
-				loc: event.loc,
-				scriptLine: scriptLine
-			})
+			if (ignoreLineList.indexOf(event.loc.start.line) === -1) {
+				posList.push({
+					errorType: 'error',
+					start: event.start + scriptStart,
+					end: event.end + scriptStart,
+					content: jsSource.substr(event.start, event.end - event.start),
+					loc: event.loc,
+					scriptLine: scriptLine
+				})
+			}
 		});
-		warningLeakList.forEach((event) => {
-			posList.push({
-				errorType: 'warning',
-				start: event.start + scriptStart,
-				end: event.end + scriptStart,
-				content: jsSource.substr(event.start, event.end - event.start),
-				loc: event.loc,
-				scriptLine: scriptLine
-			})
-		});
+		if (!checkerConfig.hideWarning) {
+			warningLeakList.forEach((event) => {
+				if (ignoreLineList.indexOf(event.loc.start.line) === -1) {
+					posList.push({
+						errorType: 'warning',
+						start: event.start + scriptStart,
+						end: event.end + scriptStart,
+						content: jsSource.substr(event.start, event.end - event.start),
+						loc: event.loc,
+						scriptLine: scriptLine
+					})
+				}
+
+			});
+		}
+
 	}
 	return posList
 }
 
-export function getMemoryLeakInfo(fileList: any[]): leakFile[] {
+export function getMemoryLeakInfo(fileList: any[], checkerConfig: CheckerConfig): leakFile[] {
 	const leakFileList = []
 	for (const file of fileList) {
 		try {
 			const content = fs.readFileSync(file, {
 				encoding: 'utf-8'
 			});
-			const leakPosList = getCodeLeakPos(content)
+			let fileType = ''
+			if (file.endsWith('.vue')) {
+				fileType = 'vue'
+			} else if (file.endsWith('.js')) {
+				fileType = 'js'
+			}
+			const leakPosList = getCodeLeakPos(content, checkerConfig, fileType)
 			if (leakPosList.length > 0) {
 				leakFileList.push({
 					isFile: true,

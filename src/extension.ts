@@ -2,7 +2,7 @@
 
 import * as vscode from 'vscode';
 import { leakFileProvider } from './memoryLeakFiles';
-import { getCodeLeakPos } from './tools';
+import { getCheckerConfig, getCodeLeakPos } from './tools';
 
 
 export function activate(context: vscode.ExtensionContext) {
@@ -15,7 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.registerCommand('memoryLeakFileCheck.refreshEntry', () => memoryLeakFileCheckProvider.refresh());
 	vscode.commands.registerCommand('extension.openMemoryLeakFile', (moduleName, line, column) => {
 		const start = new vscode.Position(line, column);
-		vscode.commands.executeCommand('vscode.open', vscode.Uri.file(`${rootPath + moduleName}`), { selection: new vscode.Range(start, start) });
+		vscode.commands.executeCommand('vscode.open', vscode.Uri.file(`${moduleName}`), { selection: new vscode.Range(start, start) });
 	});
 
 	let timeout: NodeJS.Timer | undefined = undefined;
@@ -24,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const errorDecorationType = vscode.window.createTextEditorDecorationType({
 		borderWidth: '1px',
 		borderStyle: 'solid',
-		overviewRulerColor: 'red',
+		overviewRulerColor: { id: 'errorCode' },
 		overviewRulerLane: vscode.OverviewRulerLane.Right,
 		backgroundColor: { id: 'errorCode' }
 	});
@@ -33,19 +33,28 @@ export function activate(context: vscode.ExtensionContext) {
 	const warningDecorationType = vscode.window.createTextEditorDecorationType({
 		cursor: 'crosshair',
 		// use a themable color. See package.json for the declaration and default values.
-		backgroundColor: { id: 'warningCode' }
+		backgroundColor: { id: 'warningCode' },
+		overviewRulerColor: { id: 'warningCode' },
 	});
 
 	let activeEditor = vscode.window.activeTextEditor;
+	const checkerConfig = getCheckerConfig(rootPath);
 
 	function updateDecorations() {
 		if (!activeEditor) {
 			return;
 		}
 		const text = activeEditor.document.getText();
+		const fileName = activeEditor.document.fileName;
 		const errorDecs: any[] = [];
 		const warningDecs: any[] = [];
-		const leakPosList = getCodeLeakPos(text);
+		let fileType = '';
+		if (fileName.endsWith('.vue')) {
+			fileType = 'vue';
+		} else if (fileName.endsWith('.js')) {
+			fileType = 'js';
+		}
+		const leakPosList = getCodeLeakPos(text, checkerConfig, fileType);
 		leakPosList.forEach((pos: any) => {
 			if (activeEditor) {
 				const start = activeEditor.document.positionAt(pos.start);

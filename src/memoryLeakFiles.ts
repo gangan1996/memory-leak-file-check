@@ -32,23 +32,28 @@ export class leakFileProvider implements vscode.TreeDataProvider<Dependency> {
 					deps.push(new Dependency(item.content, '', false, [], vscode.TreeItemCollapsibleState.None, {
 						command: 'extension.openMemoryLeakFile',
 						title: '',
-						arguments: [element.label, item.loc.start.line + item.scriptLine - 2, item.loc.start.column]
+						arguments: [this.workspaceRoot + element.label, item.loc.start.line + item.scriptLine - 2, item.loc.start.column]
 					}, icon));
 				});
 			}
 		} else {
 			const checkerConfig = getCheckerConfig(this.workspaceRoot);
 			const list = getFileList(this.workspaceRoot + checkerConfig.codeDir, checkerConfig);
-			const leakFileList = getMemoryLeakInfo(list);
+			const leakFileList = getMemoryLeakInfo(list, checkerConfig);
 
-			leakFileList.forEach((item) => {
-				const fileString = this.workspaceRoot ? item.file.replace(this.workspaceRoot, '') : '';
-				deps.push(new Dependency(fileString, item.leakList.length + '个泄漏', true, item.leakList, vscode.TreeItemCollapsibleState.Collapsed, {
-					command: 'extension.openMemoryLeakFile',
-					title: '',
-					arguments: [item.file, 0, 0]
-				}, icon));
-			});
+			if (leakFileList.length > 0) {
+				leakFileList.forEach((item) => {
+					const fileString = this.workspaceRoot ? item.file.replace(this.workspaceRoot, '') : '';
+					deps.push(new Dependency(fileString, item.leakList.length + '个泄漏', true, item.leakList, vscode.TreeItemCollapsibleState.Collapsed, {
+						command: 'extension.openMemoryLeakFile',
+						title: '',
+						arguments: [item.file, 0, 0]
+					}, icon));
+				});
+			} else {
+				deps.push(new Dependency('no file leak~~', '', true, [], vscode.TreeItemCollapsibleState.None));
+			}
+
 
 		}
 		return Promise.resolve(deps);
